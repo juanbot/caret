@@ -314,10 +314,10 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
       expid = paste0("J_",as.character(signif(runif(1),5)))
       newfile = paste0(token,".rds","_",iter,"_",parm,".rds")
       waitFor = c(waitFor,newfile)
-      logfile.log = paste0("/home/jbotia/launch/",expid,".log")
-      logfile.e = paste0("/home/jbotia/launch/",expid,".e")
+      logfile.log = paste0("~/launch/",expid,".log")
+      logfile.e = paste0("~/launch/",expid,".e")
       logFiles[[newfile]] = list(log=logfile.log,e=logfile.e)
-      command = paste0("echo \"Rscript -e \\\"library(devtools); load_all(\\\\\\\"/home/jbotia/mycaret/caret/pkg/caret\\\\\\\");",
+      command = paste0("echo \"Rscript -e \\\"library(devtools); load_all(\\\\\\\"~/caret/pkg/caret\\\\\\\");",
                        "nominalTrainWorkflow_clust_fit(alldata_file=\\\\\\\"",paste0(token,".rds"),"\\\\\\\"",
                        ",parm=",parm,
                        ",iter=",iter,")",
