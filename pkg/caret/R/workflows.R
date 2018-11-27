@@ -58,6 +58,7 @@ nominalTrainWorkflow_clust_fit = function(iter,
                                alldata_file,
                                verboseIter=T,
                                testing=T){
+  cat("Calling nominalTrainWorkflow_clust_fit\n")
   
   alldata = readRDS(alldata_file)
   method = alldata$method
@@ -314,15 +315,15 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
       expid = paste0("J_",as.character(signif(runif(1),5)))
       newfile = paste0(token,".rds","_",iter,"_",parm,".rds")
       waitFor = c(waitFor,newfile)
-      logfile.log = paste0("~/launch/",expid,".log")
-      logfile.e = paste0("~/launch/",expid,".e")
+      logfile.log = paste0(ctrl$clLogPath,"/",expid,".log")
+      logfile.e = paste0(ctrl$clLogPath,"/",expid,".e")
       logFiles[[newfile]] = list(log=logfile.log,e=logfile.e)
       command = paste0("echo \"Rscript -e \\\"library(devtools); load_all(\\\\\\\"~/caret/pkg/caret\\\\\\\");",
                        "nominalTrainWorkflow_clust_fit(alldata_file=\\\\\\\"",paste0(token,".rds"),"\\\\\\\"",
                        ",parm=",parm,
                        ",iter=",iter,")",
                        "\\\"\" | qsub -S /bin/bash -cwd -N ",expid,
-                       " -l h_rt=96:0:0 -l tmem=3G,h_vmem=3G",
+                       ctrl$clParams,
                        " -o ",logfile.log," -e ",logfile.e)
       
       cat(command,"\n")

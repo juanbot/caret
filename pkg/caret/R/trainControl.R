@@ -220,7 +220,10 @@ trainControl <- function(method = "boot",
                          seeds = NA,
                          adaptive = list(min = 5, alpha = 0.05, method = "gls", complete = TRUE),
                          trim = FALSE,
-                         allowParallel = TRUE)
+                         allowParallel = TRUE,
+                         caretPath="/home/jbotia/caret/pkg/caret/",
+                         clParams=" -l h_rt=96:0:0 -l tmem=3G,h_vmem=3G ",
+                         clLogPath="~/launch/")
 {
   if(is.null(selectionFunction)) stop("null selectionFunction values not allowed")
   if(!(returnResamp %in% c("all", "final", "none"))) stop("incorrect value of returnResamp")
@@ -244,6 +247,11 @@ trainControl <- function(method = "boot",
             "This value of `summaryFunction` will be ignored.", 
             call. = FALSE)
   }
+  
+  cat("Cluster params ",clParams,"\n")
+  cat("Loading caret from ",caretPath,"\n")
+  cat("Log path for cluster jobs ",clLogPath,"\n")
+  
   
   list(method = method,
        number = number,
@@ -271,5 +279,8 @@ trainControl <- function(method = "boot",
        seeds = seeds,
        adaptive = adaptive,
        trim = trim,
-       allowParallel = allowParallel)
+       allowParallel = allowParallel,
+       caretPath=caretPath,
+       clParams=clParams,
+       clLogPath=clLogPath)
 }
