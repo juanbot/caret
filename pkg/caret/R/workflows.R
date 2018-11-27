@@ -322,7 +322,7 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
                        "nominalTrainWorkflow_clust_fit(alldata_file=\\\\\\\"",paste0(token,".rds"),"\\\\\\\"",
                        ",parm=",parm,
                        ",iter=",iter,")",
-                       "\\\"\" | qsub -S /bin/bash -cwd -N ",expid,
+                       "\\\"\" | qsub -S /bin/bash -N ",expid,
                        ctrl$clParams,
                        " -o ",logfile.log," -e ",logfile.e)
       
