@@ -49,9 +49,9 @@ expandParameters <- function(fixed, seq)
   out
 }
 
-train_rec_clust_wd = function(){
-  return("/SAN/neuroscience/WT_BRAINEAC/ml/tmpcaret")
-}
+#train_rec_clust_wd = function(){
+#  return("/SAN/neuroscience/WT_BRAINEAC/ml/tmpcaret")
+#}
 
 nominalTrainWorkflow_clust_fit = function(iter,
                                parm,
@@ -305,7 +305,7 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
                  ppp=ppp,
                  keep_pred=keep_pred)
   
-  token = paste0(train_rec_clust_wd(),"/_",as.character(signif(runif(1),5)))
+  token = paste0(ctrl$clLogPath,"/_",as.character(signif(runif(1),5)))
   saveRDS(alldata,paste0(token,".rds"))
   
   waitFor = NULL
