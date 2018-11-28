@@ -289,7 +289,7 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
   pkgs <- c("methods", "caret")
   if(!is.null(method$library)) pkgs <- c(pkgs, method$library)
   export <- c()
-
+  
   alldata = list(method=method,
                  lev=lev,
                  ctrl=ctrl,
@@ -312,7 +312,7 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
   logFiles = NULL
   for(iter in seq(along = resampleIndex)){
     for(parm in 1L:nrow(info$loop)){
-      expid = paste0("J_",as.character(signif(runif(1),5)))
+      expid = paste0("J_",ifelse(is.null(method$library),"Undefined",method$library),"_",as.character(signif(runif(1),5)))
       newfile = paste0(token,".rds","_",iter,"_",parm,".rds")
       waitFor = c(waitFor,newfile)
       logfile.log = paste0(ctrl$clLogPath,"/",expid,".log")
@@ -369,7 +369,7 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
         " and ",timeLimit-elapsed," seconds to go\n")
   }
   file.remove(paste0(token,".rds"))
-      
+  cat("Done with the cluster\n")    
 
   if(ctrl$method %in% c("boot632", "optimism_boot", "boot_all"))
   {
