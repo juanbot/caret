@@ -307,7 +307,7 @@ train.default <- function(x, y,
                           tuneGrid = NULL,
                           tuneLength = ifelse(trControl$method == "none", 1, 3)) {
   startTime <- proc.time()
-
+  print("Entering train")
   ## get a seed before packages are loaded or recipes are processed
   rs_seed <- sample.int(.Machine$integer.max, 1L)
 
@@ -474,7 +474,6 @@ train.default <- function(x, y,
         tuneGrid <- tuneGrid[1:tuneLength,,drop = FALSE]
     }
   }
-
   ## Check to make sure that there are tuning parameters in some cases
   if(grepl("adaptive", trControl$method) & nrow(tuneGrid) == 1) {
     stop(paste("For adaptive resampling, there needs to be more than one",
@@ -676,6 +675,7 @@ train.default <- function(x, y,
           performance <- tmp$performance
           resampleResults <- tmp$resample
         } else {
+          
           tmp <- adaptiveWorkflow(x = x, y = y, wts = weights,
                                   info = trainInfo, method = models,
                                   ppOpts = preProcess,

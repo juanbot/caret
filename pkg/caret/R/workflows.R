@@ -37,7 +37,7 @@ MeanSD <- function(x, exclude = NULL)
 expandParameters <- function(fixed, seq)
 {
   if(is.null(seq)) return(fixed)
-
+  
   isSeq <- names(fixed) %in% names(seq)
   out <- fixed
   for(i in 1:nrow(seq))
@@ -53,28 +53,26 @@ expandParameters <- function(fixed, seq)
 #  return("/SAN/neuroscience/WT_BRAINEAC/ml/tmpcaret")
 #}
 
-nominalTrainWorkflow_clust_fit = function(iter,
+runAtomicExperiment = function(iter,
                                parm,
-                               alldata_file,
+                               method,
+                               lev,
+                               ctrl,
+                               info,
+                               pkgs,
+                               x,
+                               y,
+                               wts,
+                               ppOpts,
+                               dat,
+                               resampleIndex,
+                               printed,
+                               ppp,
+                               keep_pred,
                                verboseIter=T,
                                testing=T){
   cat("Calling nominalTrainWorkflow_clust_fit\n")
   
-  alldata = readRDS(alldata_file)
-  method = alldata$method
-  lev = alldata$lev
-  ctrl = alldata$ctrl
-  info = alldata$info
-  pkgs = alldata$pkgs
-  x = alldata$x
-  y = alldata$y
-  wts = alldata$wts
-  ppOpts = alldata$ppOpts
-  dat = alldata$dat
-  resampleIndex = alldata$resampleIndex
-  printed = alldata$printed
-  ppp = alldata$ppp
-  keep_pred = alldata$keep_pred
   
   if(!(length(ctrl$seeds) == 1 && is.na(ctrl$seeds))) set.seed(ctrl$seeds[[iter]][parm])
   
@@ -110,7 +108,7 @@ nominalTrainWorkflow_clust_fit = function(iter,
                 pp = ppp,
                 classProbs = ctrl$classProbs,
                 sampling = ctrl$sampling),#,
-                #...),
+    #...),
     silent = TRUE)
   
   if(testing) print(mod)
@@ -253,13 +251,7 @@ nominalTrainWorkflow_clust_fit = function(iter,
                                 names(resampleIndex), iter, FALSE)
   
   if(testing) print(thisResample)
-  fileout = paste0(alldata_file,"_",iter,"_",parm,".rds")
-  cat("Saving all results from this job into",fileout,"\n")
-  
-  saveRDS(list(resamples = thisResample, pred = tmpPred, resamplesExtra = thisResampleExtra),
-          fileout)
-  
-  
+  return(list(resamples = thisResample, pred = tmpPred, resamplesExtra = thisResampleExtra))
 }
 
 #' @importFrom utils head
@@ -268,16 +260,15 @@ nominalTrainWorkflow_clust_fit = function(iter,
 nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing = FALSE, ...)
 {
   loadNamespace("caret")
-  cat("Here workflow\n")
   ppp <- list(options = ppOpts)
   ppp <- c(ppp, ctrl$preProcOptions)
-
+  
   printed <- format(info$loop, digits = 4)
   colnames(printed) <- gsub("^\\.", "", colnames(printed))
-
+  
   ## For 632 estimator, add an element to the index of zeros to trick it into
   ## fitting and predicting the full data set.
-
+  
   resampleIndex <- ctrl$index
   if(ctrl$method %in% c("boot632", "optimism_boot", "boot_all"))
   {
@@ -290,7 +281,9 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
   if(!is.null(method$library)) pkgs <- c(pkgs, method$library)
   export <- c()
   
-  alldata = list(method=method,
+  
+  alldata = list(fun=runAtomicExperiment,
+                 method=method,
                  lev=lev,
                  ctrl=ctrl,
                  #is_regression=is_regression,
@@ -305,45 +298,55 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
                  ppp=ppp,
                  keep_pred=keep_pred)
   
-  token = paste0(ctrl$clLogPath,"/_",as.character(signif(runif(1),5)))
-  saveRDS(alldata,paste0(token,".rds"))
+  #token = paste0(ctrl$clLogPath,"/_",as.character(signif(runif(1),5)))
+  #saveRDS(alldata,paste0(token,".rds"))
   
-  waitFor = NULL
-  logFiles = NULL
+  handlers = NULL
+  clparams = ""
   for(iter in seq(along = resampleIndex)){
     for(parm in 1L:nrow(info$loop)){
-      expid = paste0("J_",ifelse(is.null(method$library),"Undefined",method$library),"_",as.character(signif(runif(1),5)))
-      newfile = paste0(token,".rds","_",iter,"_",parm,".rds")
-      waitFor = c(waitFor,newfile)
-      logfile.log = paste0(ctrl$clLogPath,"/",expid,".log")
-      logfile.e = paste0(ctrl$clLogPath,"/",expid,".e")
-      logFiles[[newfile]] = list(log=logfile.log,e=logfile.e)
-      command = paste0("echo \"Rscript -e \\\"library(devtools); load_all(\\\\\\\"~/caret/pkg/caret\\\\\\\");",
-                       "nominalTrainWorkflow_clust_fit(alldata_file=\\\\\\\"",paste0(token,".rds"),"\\\\\\\"",
-                       ",parm=",parm,
-                       ",iter=",iter,")",
-                       "\\\"\" | qsub -S /bin/bash -N ",expid,
-                       ctrl$clParams,
-                       " -o ",logfile.log," -e ",logfile.e)
+      expid = paste0("J_",ifelse(is.null(method$library),"Undefined",method$library))
+      myparams = alldata
+      myparams$parm = parm
+      myparams$iter = iter
+      job = launchJob(parameters = myparams,
+                      clParams = clparams,
+                      wd=ctrl$clLogPath,
+                      prefix=expid)
+      handlers[[job$jobname]] = job
       
-      cat(command,"\n")
-      system(command)
+      
+      #newfile = paste0(token,".rds","_",iter,"_",parm,".rds")
+      #waitFor = c(waitFor,newfile)
+      #logfile.log = paste0(ctrl$clLogPath,"/",expid,".log")
+      #logfile.e = paste0(ctrl$clLogPath,"/",expid,".e")
+      #command = paste0("echo \"Rscript -e \\\"library(devtools); load_all(\\\\\\\"~/caret/pkg/caret\\\\\\\");",
+      #logFiles[[newfile]] = list(log=logfile.log,e=logfile.e)
+      #                 "nominalTrainWorkflow_clust_fit(alldata_file=\\\\\\\"",paste0(token,".rds"),"\\\\\\\"",
+      #                 ",parm=",parm,
+      #                 ",iter=",iter,")",
+      #                "\\\"\" | qsub -S /bin/bash -N ",expid,
+      #               ctrl$clParams,
+      #              " -o ",logfile.log," -e ",logfile.e)
     }
   }
   
-  waitForReady = rep(F,length(waitFor))
+  cat("We will collect Jobs, still",length(handlers),"jobs to go\n")
+  jobs = waitForJobs(handlers=handlers,
+                     timeLimit=2*3600,
+                     increment=30,
+                     removeData=F,
+                     removeLogs=F,
+                     qstatworks=T,
+                     wd=ctrl$clLogPath)
+  jobids = names(jobs)
   resamples = NULL
   pred = NULL
   resamplesExtra = NULL
-  timeLimit = 24*3600
-  elapsed = 0
-  increment = 30
-  while(sum(waitForReady) < length(waitFor) & elapsed < timeLimit){
-    indexes = which(!waitForReady)
-    for(index in indexes){
-      #cat("Checking",waitFor[index],"\n")
-      if(file.exists(waitFor[index])){
-        datain = readRDS(waitFor[index])
+  for(jobid in jobids){
+    job = jobs[[jobid]]
+    if(!is.null(job)){
+        datain = job$result
         if(is.null(resamples)){
           resamples = rbind(resamples,datain$resamples)
           pred = rbind(pred,datain$pred)
@@ -351,25 +354,14 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
           names(resamplesExtra) = names(datain$resamplesExtra)
           names(pred) = names(datain$pred)
           names(resamples) = names(datain$resamples)
-          
         }else{
           resamples = rbind(resamples,datain$resamples)
           pred = rbind(pred,datain$pred)
           resamplesExtra = rbind(resamplesExtra,datain$resamplesExtra)
         }
-        waitForReady[index] = T
-        file.remove(waitFor[index])
-        file.remove(logFiles[[waitFor[index]]]$log)
-        file.remove(logFiles[[waitFor[index]]]$e)
       }
-    }
-    Sys.sleep(increment)
-    elapsed = elapsed + increment
-    cat("Waking up, still",sum(!waitForReady),"files to read out of",length(waitForReady), 
-        " and ",timeLimit-elapsed," seconds to go\n")
-  }
-  file.remove(paste0(token,".rds"))
-  cat("Done with the cluster\n")    
+    }    
+  
 
   if(ctrl$method %in% c("boot632", "optimism_boot", "boot_all"))
   {
@@ -393,18 +385,18 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
     }
   }
   names(resamples) <- gsub("^\\.", "", names(resamples))
-
+  
   if(any(!complete.cases(resamples[,!grepl("^cell|Resample", colnames(resamples)),drop = FALSE])))
   {
     warning("There were missing values in resampled performance measures.")
   }
-
+  
   out <- ddply(resamples[,!grepl("^cell|Resample", colnames(resamples)),drop = FALSE],
                ## TODO check this for seq models
                gsub("^\\.", "", colnames(info$loop)),
                MeanSD,
                exclude = gsub("^\\.", "", colnames(info$loop)))
-
+  
   if(ctrl$method %in% c("boot632", "boot_all")) {
     out <- merge(out, apparent)
     const <- 1 - exp(-1)
@@ -414,7 +406,7 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
       NULL
     })
   }
-
+  
   if(ctrl$method %in% c("optimism_boot", "boot_all")) {
     out <- merge(out, apparent)
     out <- merge(out, ddply(resamplesExtra[, !grepl("Resample", colnames(resamplesExtra)), drop = FALSE],
@@ -436,7 +428,7 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
       NULL
     })
   }
-
+  
   list(performance = out, resamples = resamples, predictions = if(keep_pred) pred else NULL)
 }
 
@@ -445,21 +437,21 @@ nominalTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, tes
 looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing = FALSE, ...)
 {
   loadNamespace("caret")
-
+  
   ppp <- list(options = ppOpts)
   ppp <- c(ppp, ctrl$preProcOptions)
-
+  
   printed <- format(info$loop)
   colnames(printed) <- gsub("^\\.", "", colnames(printed))
-
+  
   `%op%` <- getOper(ctrl$allowParallel && getDoParWorkers() > 1)
-
+  
   pkgs <- c("methods", "caret")
   if(!is.null(method$library)) pkgs <- c(pkgs, method$library)
-
+  
   result <- foreach(iter = seq(along = ctrl$index), .combine = "rbind", .verbose = FALSE, .errorhandling = "stop", .packages = "caret") %:%
     foreach(parm = 1:nrow(info$loop), .combine = "rbind", .verbose = FALSE, .errorhandling = "stop", .packages = "caret") %op% {
-
+      
       if(!(length(ctrl$seeds) == 1 && is.na(ctrl$seeds))) set.seed(ctrl$seeds[[iter]][parm])
       if(testing) cat("after loops\n")
       loadNamespace("caret")
@@ -469,9 +461,9 @@ looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
       if(is.null(info$submodels[[parm]]) || nrow(info$submodels[[parm]]) > 0) {
         submod <- info$submodels[[parm]]
       } else submod <- NULL
-
+      
       is_regression <- is.null(lev)
-
+      
       mod <- try(
         createModel(x = subset_x(x, ctrl$index[[iter]]),
                     y = y[ctrl$index[[iter]] ],
@@ -484,9 +476,9 @@ looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
                     sampling = ctrl$sampling,
                     ...),
         silent = TRUE)
-
+      
       holdoutIndex <- ctrl$indexOut[[iter]]
-
+      
       if(!model_failed(mod)) {
         predicted <- try(
           predictionFunction(method = method,
@@ -495,14 +487,14 @@ looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
                              preProc = mod$preProc,
                              param = submod),
           silent = TRUE)
-
+        
         if(pred_failed(predicted)) {
           fail_warning(settings = printed[parm,,drop = FALSE],
                        msg  = predicted,
                        where = "predictions",
                        iter = names(ctrl$index)[iter],
                        verb = ctrl$verboseIter)
-
+          
           predicted <- fill_failed_pred(index = holdoutIndex, lev = lev, submod)
         }
       } else {
@@ -512,7 +504,7 @@ looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
                      verb = ctrl$verboseIter)
         predicted <- fill_failed_pred(index = holdoutIndex, lev = lev, submod)
       }
-
+      
       if(testing) print(head(predicted))
       if(ctrl$classProbs) {
         if(!model_failed(mod)) {
@@ -526,11 +518,11 @@ looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
         }
         if(testing) print(head(probValues))
       }
-
+      
       predicted <- trim_values(predicted, ctrl, is_regression)
-
+      
       ##################################
-
+      
       if(!is.null(info$submodels)) {
         ## collate the predictions across all the sub-models
         predicted <- lapply(predicted,
@@ -546,16 +538,16 @@ looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
                             lv = lev,
                             rows = seq(along = y)[holdoutIndex])
         if(testing) print(head(predicted))
-
+        
         ## same for the class probabilities
         if(ctrl$classProbs)
           for(k in seq(along = predicted))
             predicted[[k]] <- cbind(predicted[[k]], probValues[[k]])
-        predicted <- do.call("rbind", predicted)
-        allParam <- expandParameters(info$loop[parm,,drop = FALSE], submod)
-        rownames(predicted) <- NULL
-        predicted <- cbind(predicted, allParam)
-        ## if saveDetails then save and export 'predicted'
+          predicted <- do.call("rbind", predicted)
+          allParam <- expandParameters(info$loop[parm,,drop = FALSE], submod)
+          rownames(predicted) <- NULL
+          predicted <- cbind(predicted, allParam)
+          ## if saveDetails then save and export 'predicted'
       } else {
         predicted <- outcome_conversion(predicted, lv = lev)
         predicted <-  data.frame(pred = predicted,
@@ -565,13 +557,13 @@ looTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
         if(ctrl$classProbs) predicted <- cbind(predicted, probValues)
         predicted$rowIndex <- seq(along = y)[holdoutIndex]
         predicted <- cbind(predicted, info$loop[parm,,drop = FALSE])
-
+        
       }
       if(ctrl$verboseIter) progress(printed[parm,,drop = FALSE],
                                     names(ctrl$index), iter, FALSE)
       predicted
     }
-
+  
   names(result) <- gsub("^\\.", "", names(result))
   out <- ddply(result,
                as.character(method$parameter$parameter),
@@ -597,9 +589,9 @@ oobTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
     loadNamespace("caret")
     lapply(pkgs, requireNamespaceQuietStop)
     if(ctrl$verboseIter) progress(printed[parm,,drop = FALSE], "", 1, TRUE)
-
+    
     if(!(length(ctrl$seeds) == 1 && is.na(ctrl$seeds))) set.seed(ctrl$seeds[[1L]][parm])
-
+    
     mod <- createModel(x = x,
                        y = y,
                        wts = wts,
@@ -610,11 +602,11 @@ oobTrainWorkflow <- function(x, y, wts, info, method, ppOpts, ctrl, lev, testing
                        classProbs = ctrl$classProbs,
                        sampling = ctrl$sampling,
                        ...)
-
+    
     out <- method$oob(mod$fit)
-
+    
     if(ctrl$verboseIter) progress(printed[parm,,drop = FALSE], "", 1, FALSE)
-
+    
     cbind(as.data.frame(t(out)), info$loop[parm,,drop = FALSE])
   }
   names(result) <- gsub("^\\.", "", names(result))
@@ -629,18 +621,18 @@ nominalSbfWorkflow <- function(x, y, ppOpts, ctrl, lev, ...)
   loadNamespace("caret")
   ppp <- list(options = ppOpts)
   ppp <- c(ppp, ctrl$preProcOptions)
-
+  
   resampleIndex <- ctrl$index
   if(ctrl$method %in% c("boot632")){
     resampleIndex <- c(list("AllData" = rep(0, nrow(x))), resampleIndex)
     ctrl$indexOut <- c(list("AllData" = rep(0, nrow(x))),  ctrl$indexOut)
   }
-
+  
   `%op%` <- getOper(ctrl$allowParallel && getDoParWorkers() > 1)
   result <- foreach(iter = seq(along = resampleIndex), .combine = "c", .verbose = FALSE, .errorhandling = "stop", .packages = "caret") %op%
   {
     if(!(length(ctrl$seeds) == 1 && is.na(ctrl$seeds))) set.seed(ctrl$seeds[iter])
-
+    
     loadNamespace("caret")
     requireNamespaceQuietStop("methods")
     if(names(resampleIndex)[iter] != "AllData") {
@@ -650,7 +642,7 @@ nominalSbfWorkflow <- function(x, y, ppOpts, ctrl, lev, ...)
       modelIndex <- 1:nrow(x)
       holdoutIndex <- modelIndex
     }
-
+    
     sbfResults <- sbfIter(subset_x(x, modelIndex),
                           y[modelIndex],
                           subset_x(x, holdoutIndex),
@@ -667,14 +659,14 @@ nominalSbfWorkflow <- function(x, y, ppOpts, ctrl, lev, ...)
     if(is.factor(y) && length(lev) <= 50) resamples <- c(resamples, flatTable(sbfResults$pred$pred, sbfResults$pred$obs))
     resamples <- data.frame(t(resamples))
     resamples$Resample <- names(resampleIndex)[iter]
-
+    
     list(resamples = resamples, selectedVars = sbfResults$variables, pred = tmpPred)
   }
-
+  
   resamples <- rbind.fill(result[names(result) == "resamples"])
   pred <- if(ctrl$saveDetails) rbind.fill(result[names(result) == "pred"]) else NULL
   performance <- MeanSD(resamples[,!grepl("Resample", colnames(resamples)),drop = FALSE])
-
+  
   if(ctrl$method %in% c("boot632"))
   {
     modelIndex <- 1:nrow(x)
@@ -688,14 +680,14 @@ nominalSbfWorkflow <- function(x, y, ppOpts, ctrl, lev, ...)
     apparent <- ctrl$functions$summary(appResults$pred, lev = lev)
     perfNames <- names(apparent)
     perfNames <- perfNames[perfNames != "Resample"]
-
+    
     const <- 1-exp(-1)
-
+    
     for(p in seq(along = perfNames))
       performance[perfNames[p]] <- (const * performance[perfNames[p]]) +  ((1-const) * apparent[perfNames[p]])
-
+    
   }
-
+  
   list(performance = performance, everything = result, predictions = if(ctrl$saveDetails) pred else NULL)
 }
 
@@ -705,33 +697,33 @@ looSbfWorkflow <- function(x, y, ppOpts, ctrl, lev, ...)
   loadNamespace("caret")
   ppp <- list(options = ppOpts)
   ppp <- c(ppp, ctrl$preProcOptions)
-
+  
   resampleIndex <- ctrl$index
-
+  
   vars <- vector(mode = "list", length = length(y))
-
+  
   `%op%` <- getOper(ctrl$allowParallel && getDoParWorkers() > 1)
   result <- foreach(iter = seq(along = resampleIndex), .combine = "c", .verbose = FALSE, .errorhandling = "stop", .packages = "caret") %op%
   {
     if(!(length(ctrl$seeds) == 1 && is.na(ctrl$seeds))) set.seed(ctrl$seeds[iter])
-
+    
     loadNamespace("caret")
     requireNamespaceQuietStop("methods")
     modelIndex <- resampleIndex[[iter]]
     holdoutIndex <- -unique(resampleIndex[[iter]])
-
+    
     sbfResults <- sbfIter(subset_x(x, modelIndex),
                           y[modelIndex],
                           subset_x(x, holdoutIndex),
                           y[holdoutIndex],
                           ctrl,
                           ...)
-
+    
     sbfResults
   }
   resamples <- do.call("rbind", result[names(result) == "pred"])
   performance <- ctrl$functions$summary(resamples, lev = lev)
-
+  
   list(performance = performance, everything = result, predictions = if(ctrl$saveDetails) resamples else NULL)
 }
 
@@ -744,20 +736,20 @@ nominalRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
   loadNamespace("caret")
   ppp <- list(options = ppOpts)
   ppp <- c(ppp, ctrl$preProcOptions)
-
+  
   resampleIndex <- ctrl$index
   if(ctrl$method %in% c("boot632")) {
     resampleIndex <- c(list("AllData" = rep(0, nrow(x))), resampleIndex)
     ctrl$indexOut <- c(list("AllData" = rep(0, nrow(x))),  ctrl$indexOut)
   }
-
+  
   `%op%` <- getOper(ctrl$allowParallel && getDoParWorkers() > 1)
   result <- foreach(iter = seq(along = resampleIndex), .combine = "c", .verbose = FALSE, .errorhandling = "stop", .packages = "caret") %op%
   {
     loadNamespace("caret")
     requireNamespace("plyr")
     requireNamespace("methods")
-
+    
     if(names(resampleIndex)[iter] != "AllData") {
       modelIndex <- resampleIndex[[iter]]
       holdoutIndex <- ctrl$indexOut[[iter]]
@@ -765,7 +757,7 @@ nominalRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
       modelIndex <- 1:nrow(x)
       holdoutIndex <- modelIndex
     }
-
+    
     seeds <- if(!(length(ctrl$seeds) == 1 && is.na(ctrl$seeds))) ctrl$seeds[[iter]] else NA
     rfeResults <- rfeIter(subset_x(x, modelIndex),
                           y[modelIndex],
@@ -777,7 +769,7 @@ nominalRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
                           seeds = seeds,
                           ...)
     resamples <- plyr::ddply(rfeResults$pred, .(Variables), ctrl$functions$summary, lev = lev)
-
+    
     if(ctrl$saveDetails)
     {
       rfeResults$pred$Resample <- names(resampleIndex)[iter]
@@ -786,12 +778,12 @@ nominalRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
       nReps <- length(table(rfeResults$pred$Variables))
       rfeResults$pred$rowIndex <- rep(seq(along = y)[unique(holdoutIndex)], nReps)
     }
-
+    
     if(is.factor(y) && length(lev) <= 50) {
       cells <- plyr::ddply(rfeResults$pred, .(Variables), function(x) flatTable(x$pred, x$obs))
       resamples <- merge(resamples, cells)
     }
-
+    
     resamples$Resample <- names(resampleIndex)[iter]
     vars <- do.call("rbind", rfeResults$finalVariables)
     vars$Resample <- names(resampleIndex)[iter]
@@ -799,7 +791,7 @@ nominalRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
   }
   resamples <- do.call("rbind", result[names(result) == "resamples"])
   rownames(resamples) <- NULL
-
+  
   if(ctrl$method %in% c("boot632"))
   {
     perfNames <- names(resamples)
@@ -812,11 +804,11 @@ nominalRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
     names(apparent) <- gsub("^\\.", "", names(apparent))
     resamples <- subset(resamples, Resample != "AllData")
   }
-
+  
   externPerf <- plyr::ddply(resamples[,!grepl("\\.cell|Resample", colnames(resamples)),drop = FALSE],
-                      .(Variables),
-                      MeanSD,
-                      exclude = "Variables")
+                            .(Variables),
+                            MeanSD,
+                            exclude = "Variables")
   if(ctrl$method %in% c("boot632"))
   {
     externPerf <- merge(externPerf, apparent)
@@ -836,7 +828,7 @@ looRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
   loadNamespace("caret")
   ppp <- list(options = ppOpts)
   ppp <- c(ppp, ctrl$preProcOptions)
-
+  
   resampleIndex <- ctrl$index
   `%op%` <- getOper(ctrl$allowParallel && getDoParWorkers() > 1)
   result <- foreach(iter = seq(along = resampleIndex), .combine = "c", .verbose = FALSE, .errorhandling = "stop", .packages = "caret") %op%
@@ -845,7 +837,7 @@ looRfeWorkflow <- function(x, y, sizes, ppOpts, ctrl, lev, ...)
     requireNamespaceQuietStop("methods")
     modelIndex <- resampleIndex[[iter]]
     holdoutIndex <- -unique(resampleIndex[[iter]])
-
+    
     seeds <- if(!(length(ctrl$seeds) == 1 && is.na(ctrl$seeds))) ctrl$seeds[[iter]] else NA
     rfeResults <- rfeIter(subset_x(x, modelIndex),
                           y[modelIndex],
